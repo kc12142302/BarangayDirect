@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resident Login - Barangay Direct</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-page">
+    <h1>Resident Login</h1>
+
+    <p id="registrationMessage" class="registration-message" role="status" hidden></p>
+    <form action="/resident-login" method="POST" id="residentLoginForm">
+        <label>Email:</label><br>
+        <input type="email" name="email" required><br><br>
+
+        <label>Password:</label><br>
+        <input type="password" name="password" required aria-describedby="loginError">
+        <p id="loginError" class="field-error" role="alert" hidden>
+            <span class="field-error-icon" aria-hidden="true">&#10005;</span>
+            Incorrect email or password.
+        </p>
+        <br>
+
+        <button type="submit">Log In</button>
+    </form>
+
+    <p><a href="/resident-reset-password.html">Forgot your password? Reset it here</a></p>
+    <p><a href="/resident-register.html">Register as a resident</a></p>
+    
+
+    <script>
+        const loginParams = new URLSearchParams(window.location.search);
+        const registrationMessage = document.getElementById("registrationMessage");
+
+        if (loginParams.get("registered") === "1") {
+            registrationMessage.textContent = "Your registration and verification are under processing. Please wait less than 24 hours for the barangay to review your application.";
+            registrationMessage.classList.add("is-pending");
+            registrationMessage.hidden = false;
+        }
+
+        if (loginParams.get("error") === "pending") {
+            registrationMessage.textContent = "Your resident verification is still under processing. Please wait less than 24 hours for the barangay to review your application.";
+            registrationMessage.classList.add("is-pending");
+            registrationMessage.hidden = false;
+        }
+
+        if (loginParams.get("error") === "rejected") {
+            registrationMessage.textContent = "Your resident verification was rejected. Please contact the barangay for more information.";
+            registrationMessage.classList.add("is-error");
+            registrationMessage.hidden = false;
+        }
+
+        if (loginParams.get("error") === "invalid-credentials") {
+            const passwordInput = document.querySelector("#residentLoginForm input[name='password']");
+            const loginError = document.getElementById("loginError");
+
+            passwordInput.classList.add("input-error");
+            passwordInput.setAttribute("aria-invalid", "true");
+            loginError.hidden = false;
+            passwordInput.focus();
+        }
+
+        if (loginParams.get("error") === "blocked") {
+            const passwordInput = document.querySelector("#residentLoginForm input[name='password']");
+            const loginError = document.getElementById("loginError");
+
+            loginError.innerHTML = '<span class="field-error-icon" aria-hidden="true">&#10005;</span> Your account is blocked after two false-information violations.';
+            passwordInput.classList.add("input-error");
+            passwordInput.setAttribute("aria-invalid", "true");
+            loginError.hidden = false;
+        }
+    </script>
+</body>
+</html>

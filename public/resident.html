@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resident Dashboard - Barangay Direct</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="resident-dashboard">
+    <div class="dashboard-header">
+        <h1>Resident Dashboard</h1>
+
+        <form action="/resident-logout" method="POST">
+            <button type="submit">Log Out</button>
+        </form>
+    </div>
+
+    <p>You are logged in as an approved resident.</p>
+
+    <div id="securitySetupSection" hidden>
+        <h2>Forgot Password Recovery</h2>
+        <p id="securitySetupMessage" role="status">Set a security question and answer so you can recover your account.</p>
+        <form action="/resident-security-question" method="POST" id="securitySetupForm">
+            <label>Security Question:</label><br>
+            <select name="security_question" required>
+                <option value="">Choose one</option>
+                <option value="color">What is your favorite color?</option>
+                <option value="number">What is your favorite number?</option>
+                <option value="food">What is your favorite food?</option>
+            </select><br><br>
+
+            <label>Your Answer:</label><br>
+            <input type="text" name="security_answer" autocomplete="off" maxlength="255" required><br><br>
+            <button type="submit">Save Recovery Question</button>
+        </form>
+    </div>
+
+    <h2>Submit an Incident Report</h2>
+    <p>This service is for minor incidents and barangay concerns, not emergencies.</p>
+
+    <p id="submissionMessage"></p>
+
+    <form action="/submit-incident" method="POST" enctype="multipart/form-data">
+        <label>Incident Description:</label><br>
+        <textarea name="description" maxlength="5000" required></textarea><br><br>
+
+        <label>Location:</label><br>
+        <select name="location" required>
+            <option value="" selected disabled>Select a street</option>
+            <option value="Bonifacio">Bonifacio</option>
+            <option value="Burgos">Burgos</option>
+            <option value="Fuentes">Fuentes</option>
+            <option value="Gomez">Gomez</option>
+            <option value="Lawton">Lawton</option>
+            <option value="Maliron">Maliron</option>
+            <option value="Washington">Washington</option>
+            <option value="Zamora">Zamora</option>
+            <option value="National Highway">National Highway</option>
+            <option value="Other">Other</option>
+        </select><br><br>
+
+        <label>Photo or Video:</label><br>
+        <input type="file" name="incident_media" accept="image/*,video/*"><br><br>
+
+        <button type="submit">Submit Incident Report</button>
+    </form>
+
+    <h2>My Incident Reports</h2>
+    <table border="1" cellpadding="10">
+        <thead>
+            <tr>
+                <th>Ticket Number</th>
+                <th>Description</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Official Message</th>
+                <th>Submitted</th>
+            </tr>
+        </thead>
+        <tbody id="incidentsTable">
+            <tr><td colspan="6">Loading...</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+        const securitySetupSection = document.getElementById("securitySetupSection");
+        const securitySetupForm = document.getElementById("securitySetupForm");
+        const securitySetupMessage = document.getElementById("securitySetupMessage");
+
+        fetch("/resident-security-question")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("Unable to check recovery setup.");
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data.configured) {
+                    securitySetupSection.hidden = false;
+                }
+            })
+            .catch(() => {});
+
+        securitySetupForm.addEventListener("submit", event => {
+            event.preventDefault();
+            fetch(securitySetupForm.action, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams(new FormData(securitySetupForm))
+            })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok) {
+                        throw new Error(data.error || "Unable to save recovery setup.");
+                    }
+                    securitySetupMessage.textContent = data.message;
+                    securitySetupForm.hidden = true;
+                })
+                .catch(error => {
+                    securitySetupMessage.textContent = error.message;
+                });
+        });
+
+        if (new URLSearchParams(window.location.search).get("submitted") === "1") {
+            const ticketNumber = new URLSearchParams(window.location.search).get("ticket");
+            document.getElementById("submissionMessage").textContent = ticketNumber
+                ? `Incident report submitted successfully. Ticket number: ${ticketNumber}.`
+                : "Incident report submitted successfully.";
+        }
+
+        fetch("/resident-incidents")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("Unable to load incident reports.");
+                }
+
+                return response.json();
+            })
+            .then(reports => {
+                const table = document.getElementById("incidentsTable");
+                table.innerHTML = "";
+
+                if (reports.length === 0) {
+                    table.innerHTML = "<tr><td colspan=\"6\">No incident reports yet.</td></tr>";
+                    return;
+                }
+
+                reports.forEach(report => {
+                    const row = document.createElement("tr");
+                    [String(report.incident_id).padStart(6, "0"), report.description, report.location, report.status]
+                        .forEach(value => {
+                            const cell = document.createElement("td");
+                            cell.textContent = value ?? "";
+                            row.appendChild(cell);
+                        });
+
+                    const messageCell = document.createElement("td");
+                    if (report.rejection_reason) {
+                        messageCell.textContent = `Rejected: ${report.rejection_reason}`;
+                        messageCell.className = "rejection-message";
+                    } else {
+                        messageCell.textContent = "-";
+                    }
+                    row.appendChild(messageCell);
+
+                    const submittedCell = document.createElement("td");
+                    submittedCell.textContent = report.submitted_at ?? "";
+                    row.appendChild(submittedCell);
+                    table.appendChild(row);
+                });
+            })
+            .catch(() => {
+                document.getElementById("incidentsTable").innerHTML =
+                    "<tr><td colspan=\"6\">Failed to load incident reports.</td></tr>";
+            });
+    </script>
+</body>
+</html>

@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barangay Official - Barangay Direct</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="official-dashboard">
+
+    <div class="dashboard-header">
+        <h1>Barangay Official</h1>
+
+        <form action="/official-logout" method="POST">
+            <button type="submit">Log Out</button>
+        </form>
+    </div>
+
+    <h2>Resident Verification Requests</h2>
+
+    <p>Pending verification requests:</p>
+    <p id="verificationSearchContainer" hidden>
+        <label for="verificationSearch">Search pending registrations:</label><br>
+        <input type="search" id="verificationSearch" placeholder="Name, mobile number, purok..." autocomplete="off">
+    </p>
+
+    <table border="1" cellpadding="10">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Age</th>
+                <th>Gender</th>
+                <th>Address</th>
+                <th>Purok</th>
+                <th>Mobile Number</th>
+                <th>Status</th>
+                <th>Document</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+
+        <tbody id="requestsTable">
+            <tr>
+                <td colspan="9">Loading...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Active Incident Reports</h2>
+    <table border="1" cellpadding="10">
+        <thead>
+            <tr>
+                <th>Ticket Number</th>
+                <th>Resident</th>
+                <th>Description</th>
+                <th>Location</th>
+                <th>Photo/Video</th>
+                <th>Submitted</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="incidentsTable">
+                    <tr><td colspan="8">Loading...</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Resident Reports</h2>
+    <p>
+        <label for="completedReportSearch">Search approved residents by name or report ticket:</label><br>
+        <input type="search" id="completedReportSearch" placeholder="Name or ticket number (e.g. 13 or 000013)..." autocomplete="off">
+    </p>
+    <div id="completedResidentResults" aria-live="polite" hidden></div>
+    <section id="residentReportHistory" hidden>
+        <h3 id="residentReportHistoryTitle"></h3>
+        <table border="1" cellpadding="10">
+            <thead>
+                <tr>
+                    <th>Ticket Number</th>
+                    <th>Reporter</th>
+                    <th>Description</th>
+                    <th>Location</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th>Official Message</th>
+                    <th>Photo/Video</th>
+                </tr>
+            </thead>
+            <tbody id="residentReportHistoryTable"></tbody>
+        </table>
+    </section>
+
+    <script>
+        const requestsTable = document.getElementById("requestsTable");
+        const verificationSearch = document.getElementById("verificationSearch");
+
+        function filterVerificationRequests() {
+            const searchTerm = verificationSearch.value.trim().toLocaleLowerCase();
+            const rows = Array.from(requestsTable.querySelectorAll("tr[data-search]"));
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                row.hidden = !row.dataset.search.includes(searchTerm);
+                if (!row.hidden) {
+                    visibleCount += 1;
+                }
+            });
+
+            let noMatchesRow = document.getElementById("noMatchingRequestsRow");
+            if (rows.length > 0 && visibleCount === 0) {
+                if (!noMatchesRow) {
+                    noMatchesRow = document.createElement("tr");
+                    noMatchesRow.id = "noMatchingRequestsRow";
+                    noMatchesRow.innerHTML = '<td colspan="9">No matching registrations.</td>';
+                    requestsTable.appendChild(noMatchesRow);
+                }
+            } else if (noMatchesRow) {
+                noMatchesRow.remove();
+            }
+        }
+
+        verificationSearch.addEventListener("input", filterVerificationRequests);
+
+        fetch("/verification-requests")
+            .then(response => response.json())
+            .then(data => {
+
+                requestsTable.innerHTML = "";
+
+                if (data.length === 0) {
+                    requestsTable.innerHTML = `
+                        <tr>
+                            <td colspan="9">No pending verification requests.</td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                document.getElementById("verificationSearchContainer").hidden = false;
+
+                data.forEach(request => {
+
+                    const row = document.createElement("tr");
+
+                    const values = [
+                        request.full_name,
+                        request.age,
+                        request.gender,
+                        request.address,
+                        request.purok,
+                        request.mobile_number,
+                        request.status
+                    ];
+                    row.dataset.search = values.join(" ").toLocaleLowerCase();
+
+                    values.forEach(value => {
+                        const cell = document.createElement("td");
+                        cell.textContent = value ?? "";
+                        row.appendChild(cell);
+                    });
+
+                    const documentCell = document.createElement("td");
+                    const documentLink = document.createElement("a");
+                    documentLink.href = `/verification-document/${encodeURIComponent(request.verification_document)}`;
+                    documentLink.target = "_blank";
+                    documentLink.rel = "noopener noreferrer";
+                    documentLink.textContent = "View Document";
+                    documentCell.appendChild(documentLink);
+                    row.appendChild(documentCell);
+
+                    const actionCell = document.createElement("td");
+                    [
+                        ["Approve", "Approved"],
+                        ["Reject", "Rejected"]
+                    ].forEach(([label, status]) => {
+                        const actionButton = document.createElement("button");
+                        actionButton.type = "button";
+                        actionButton.textContent = label;
+                        actionButton.addEventListener("click", () => {
+                            updateVerificationStatus(request.verification_id, status, row);
+                        });
+                        actionCell.appendChild(actionButton);
+                        actionCell.appendChild(document.createTextNode(" "));
+                    });
+                    row.appendChild(actionCell);
+
+                    requestsTable.appendChild(row);
+                });
+
+                filterVerificationRequests();
+            })
+            .catch(error => {
+                console.error("Error:", error);
+
+                document.getElementById("requestsTable").innerHTML = `
+                    <tr>
+                        <td colspan="9">Failed to load requests.</td>
+                    </tr>
+                `;
+            });
+
+        function updateVerificationStatus(verificationId, status, row) {
+            const buttons = row.querySelectorAll("button");
+            buttons.forEach(button => {
+                button.disabled = true;
+            });
+
+            fetch(`/verification-requests/${verificationId}/status`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: `status=${encodeURIComponent(status)}`
+            })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok) {
+                        throw new Error(data.error || "Failed to update verification status");
+                    }
+
+                    row.remove();
+
+                    filterVerificationRequests();
+
+                    if (requestsTable.querySelectorAll("tr[data-search]").length === 0) {
+                        document.getElementById("verificationSearchContainer").hidden = true;
+                        requestsTable.innerHTML = `
+                            <tr>
+                                <td colspan="9">No pending verification requests.</td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    buttons.forEach(button => {
+                        button.disabled = false;
+                    });
+                    alert(error.message);
+                });
+        }
+
+        fetch("/incident-reports")
+            .then(response => response.json())
+            .then(reports => {
+                const table = document.getElementById("incidentsTable");
+                table.innerHTML = "";
+
+                if (reports.length === 0) {
+                    table.innerHTML = "<tr><td colspan=\"8\">No active incident reports.</td></tr>";
+                    return;
+                }
+
+                reports.forEach(report => {
+                    const row = document.createElement("tr");
+                    [String(report.incident_id).padStart(6, "0"), report.full_name, report.description, report.location]
+                        .forEach(value => {
+                            const cell = document.createElement("td");
+                            cell.textContent = value ?? "";
+                            row.appendChild(cell);
+                        });
+
+                    const mediaCell = document.createElement("td");
+                    if (report.media_filename) {
+                        const mediaUrl = `/incident-media/${encodeURIComponent(report.media_filename)}`;
+
+                        if ((report.media_type || "").startsWith("video/")) {
+                            const video = document.createElement("video");
+                            video.src = mediaUrl;
+                            video.controls = true;
+                            video.preload = "metadata";
+                            video.className = "incident-media-preview";
+                            mediaCell.appendChild(video);
+                        } else {
+                            const image = document.createElement("img");
+                            image.src = mediaUrl;
+                            image.alt = "Resident incident report media";
+                            image.className = "incident-media-preview";
+                            mediaCell.appendChild(image);
+                        }
+                    } else {
+                        mediaCell.textContent = "No media";
+                    }
+                    row.appendChild(mediaCell);
+
+                    const submittedCell = document.createElement("td");
+                    submittedCell.textContent = report.submitted_at ?? "";
+                    row.appendChild(submittedCell);
+
+                    const statusCell = document.createElement("td");
+                    statusCell.textContent = report.status;
+                    row.appendChild(statusCell);
+
+                    const actionCell = document.createElement("td");
+                    const rejectionReason = document.createElement("select");
+                    rejectionReason.innerHTML = `
+                        <option value="">Reason for Reject</option>
+                        <option value="False information">False information</option>
+                        <option value="Duplicate report">Duplicate report</option>
+                        <option value="Not a barangay concern">Not a barangay concern</option>
+                        <option value="Insufficient details">Insufficient details</option>
+                        <option value="Other">Other</option>
+                    `;
+                    rejectionReason.setAttribute("aria-label", "Reason for rejecting this report");
+                    rejectionReason.disabled = ["Resolved", "Rejected"].includes(report.status);
+                    actionCell.appendChild(rejectionReason);
+                    actionCell.appendChild(document.createTextNode(" "));
+
+                    [
+                        ["Processing", "Processing"],
+                        ["Resolve", "Resolved"],
+                        ["Reject", "Rejected"]
+                    ].forEach(([label, status]) => {
+                        const statusButton = document.createElement("button");
+                        statusButton.type = "button";
+                        statusButton.textContent = label;
+                        statusButton.disabled = report.status === status ||
+                            ["Resolved", "Rejected"].includes(report.status);
+                        statusButton.addEventListener("click", () => {
+                            if (status === "Rejected" && !rejectionReason.value) {
+                                alert("Please choose a reason before rejecting this report.");
+                                rejectionReason.focus();
+                                return;
+                            }
+
+                            updateIncidentStatus(report.incident_id, status, rejectionReason.value);
+                        });
+                        actionCell.appendChild(statusButton);
+                        actionCell.appendChild(document.createTextNode(" "));
+                    });
+                    row.appendChild(actionCell);
+                    table.appendChild(row);
+                });
+            })
+            .catch(() => {
+                document.getElementById("incidentsTable").innerHTML =
+                    "<tr><td colspan=\"8\">Failed to load incident reports.</td></tr>";
+            });
+
+        const completedReportSearch = document.getElementById("completedReportSearch");
+        const completedResidentResults = document.getElementById("completedResidentResults");
+        const residentReportHistory = document.getElementById("residentReportHistory");
+        const residentReportHistoryTable = document.getElementById("residentReportHistoryTable");
+        let completedSearchTimeout;
+
+        completedReportSearch.addEventListener("input", () => {
+            window.clearTimeout(completedSearchTimeout);
+            const searchTerm = completedReportSearch.value.trim();
+            completedResidentResults.replaceChildren();
+            residentReportHistory.hidden = true;
+
+            if (searchTerm.length < 2 && !/^\d{1,6}$/.test(searchTerm)) {
+                completedResidentResults.hidden = true;
+                return;
+            }
+
+            completedResidentResults.hidden = false;
+            completedResidentResults.textContent = "Searching...";
+            completedSearchTimeout = window.setTimeout(() => {
+                fetch(`/completed-resident-reports?name=${encodeURIComponent(searchTerm)}`)
+                    .then(response => {
+                        const contentType = response.headers.get("content-type") || "";
+                        if (!contentType.includes("application/json")) {
+                            throw new Error("The search service returned an unexpected response. Refresh the dashboard and sign in again.");
+                        }
+                        return response.json().then(data => ({ ok: response.ok, data }));
+                    })
+                    .then(({ ok, data }) => {
+                        if (!ok) {
+                            throw new Error(data.error || "Unable to search completed reports.");
+                        }
+
+                        completedResidentResults.replaceChildren();
+                        if (!Array.isArray(data)) {
+                            if (!data.report) {
+                                completedResidentResults.textContent = "No report found for that ticket number.";
+                                return;
+                            }
+
+                            const ticketNumber = String(data.report.incident_id).padStart(6, "0");
+                            completedResidentResults.textContent =
+                                `Ticket ${ticketNumber} for ${data.report.full_name}`;
+                            loadResidentReportHistory(data.report, [data.report]);
+                            return;
+                        }
+
+                        if (data.length === 0) {
+                            completedResidentResults.textContent = "No approved residents found for that name.";
+                            return;
+                        }
+
+                        data.forEach(resident => {
+                            const resultButton = document.createElement("button");
+                            resultButton.type = "button";
+                            const reportCount = Number(resident.report_count);
+                            const reportLabel = reportCount === 1 ? "report" : "reports";
+                            resultButton.textContent = `${resident.full_name} (${reportCount} ${reportLabel})`;
+                            resultButton.addEventListener("click", () => {
+                                loadResidentReportHistory(resident);
+                            });
+                            completedResidentResults.appendChild(resultButton);
+                        });
+                    })
+                    .catch(error => {
+                        completedResidentResults.textContent = error.message;
+                    });
+            }, 250);
+        });
+
+        function loadResidentReportHistory(resident, providedReports = null) {
+            residentReportHistory.hidden = false;
+            document.getElementById("residentReportHistoryTitle").textContent =
+                providedReports
+                    ? `Ticket ${String(providedReports[0].incident_id).padStart(6, "0")}`
+                    : `All reports for ${resident.full_name}`;
+            residentReportHistoryTable.innerHTML = '<tr><td colspan="8">Loading reports...</td></tr>';
+
+            const reportsRequest = providedReports
+                ? Promise.resolve(providedReports)
+                : fetch(`/resident-reports/${resident.resident_id}`)
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        if (!ok) {
+                            throw new Error(data.error || "Unable to load resident reports.");
+                        }
+                        return data;
+                    });
+
+            reportsRequest
+                .then(data => {
+                    residentReportHistoryTable.replaceChildren();
+                    if (data.length === 0) {
+                        residentReportHistoryTable.innerHTML = '<tr><td colspan="8">No reports found.</td></tr>';
+                        return;
+                    }
+
+                    data.forEach(report => {
+                        const row = document.createElement("tr");
+                        [String(report.incident_id).padStart(6, "0"), resident.full_name, report.description, report.location, report.submitted_at, report.status,
+                            report.rejection_reason ? `Rejected: ${report.rejection_reason}` : "-"]
+                            .forEach(value => {
+                                const cell = document.createElement("td");
+                                cell.textContent = value ?? "";
+                                row.appendChild(cell);
+                            });
+
+                        const mediaCell = document.createElement("td");
+                        if (report.media_filename) {
+                            const mediaUrl = `/incident-media/${encodeURIComponent(report.media_filename)}`;
+                            if ((report.media_type || "").startsWith("video/")) {
+                                const video = document.createElement("video");
+                                video.src = mediaUrl;
+                                video.controls = true;
+                                video.preload = "metadata";
+                                video.className = "incident-media-preview";
+                                mediaCell.appendChild(video);
+                            } else {
+                                const image = document.createElement("img");
+                                image.src = mediaUrl;
+                                image.alt = "Resident incident report media";
+                                image.className = "incident-media-preview";
+                                mediaCell.appendChild(image);
+                            }
+                        } else {
+                            mediaCell.textContent = "No media";
+                        }
+                        row.appendChild(mediaCell);
+                        residentReportHistoryTable.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    residentReportHistoryTable.innerHTML =
+                        `<tr><td colspan="8">${error.message}</td></tr>`;
+                });
+        }
+
+        function updateIncidentStatus(incidentId, status, rejectionReason = "") {
+            fetch(`/incident-reports/${incidentId}/status`, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `status=${encodeURIComponent(status)}&rejection_reason=${encodeURIComponent(rejectionReason)}`
+            }).then(response => response.json().then(data => ({ ok: response.ok, data }))).then(({ ok, data }) => {
+                if (!ok) {
+                    throw new Error(data.error || "Failed to update incident status.");
+                }
+                window.location.reload();
+            }).catch(error => alert(error.message));
+        }
+    </script>
+
+</body>
+</html>

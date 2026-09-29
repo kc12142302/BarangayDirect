@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Official Login - Barangay Direct</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-page">
+
+    <h1>Barangay Direct</h1>
+    <h2>Official Login</h2>
+
+    <form action="/official-login" method="POST" id="officialLoginForm">
+
+        <label>Username:</label><br>
+        <input type="text" name="username" required>
+        <br><br>
+
+        <label>Password:</label><br>
+        <input type="password" name="password" required aria-describedby="loginError">
+        <p id="loginError" class="field-error" role="alert" hidden>
+            <span class="field-error-icon" aria-hidden="true">&#10005;</span>
+            Incorrect username or password.
+        </p>
+        <br><br>
+
+        <button type="submit">Login</button>
+
+    </form>
+
+    <script>
+        if (new URLSearchParams(window.location.search).get("error") === "invalid-credentials") {
+            const passwordInput = document.querySelector("#officialLoginForm input[name='password']");
+            const loginError = document.getElementById("loginError");
+
+            passwordInput.classList.add("input-error");
+            passwordInput.setAttribute("aria-invalid", "true");
+            loginError.hidden = false;
+            passwordInput.focus();
+        }
+    </script>
+</body>
+</html>
